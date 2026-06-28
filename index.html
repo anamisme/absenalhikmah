@@ -7,7 +7,7 @@
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 tailwind.config = {
   darkMode:'class',
@@ -179,7 +179,8 @@ body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
         </div>
       </div>
       <div id="scannerBox">
-        <div class="absolute inset-0 bg-slate-900 flex items-center justify-center">
+        <video id="cameraFeed" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
+        <div id="cameraPlaceholder" class="absolute inset-0 bg-slate-900 flex items-center justify-center">
           <span class="ms text-white text-[80px] opacity-10">camera_outdoor</span>
         </div>
         <div class="scan-frame">
@@ -193,6 +194,10 @@ body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
           </p>
         </div>
       </div>
+      <button onclick="toggleCamera()" class="press text-primary text-xs font-semibold flex items-center gap-1 self-center mt-2">
+        <span class="ms text-[16px]" id="camToggleIcon">videocam</span>
+        <span id="camToggleLabel">Buka Kamera</span>
+      </button>
     </section>
     <section class="mt-2">
       <button id="btnClock" onclick="handleClock()" disabled

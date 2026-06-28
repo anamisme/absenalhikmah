@@ -271,11 +271,13 @@ async function handleClock() {
   if (res && res.ok) {
     showToast(res.msg, true);
     if (window.AndroidBridge) AndroidBridge.showToast(res.msg);
+    // Restore button structure before loadStatus updates it
+    btn.innerHTML = '<span class="ms text-[22px]" id="btnClockIcon">done_all</span><span id="btnClockLabel">Memuat...</span>';
     setTimeout(()=>loadStatusHariIni(), 800);
   } else {
     showToast(res?.msg||'Gagal.', false);
     btn.disabled = false;
-    btn.innerHTML = `<span class="ms text-[22px]" id="btnClockIcon">${clockStatus==='can-in'?'login':'logout'}</span><span id="btnClockLabel">${clockStatus==='can-in'?'Clock In':'Clock Out'}</span>`;
+    btn.innerHTML = '<span class="ms text-[22px]" id="btnClockIcon">'+(clockStatus==='can-in'?'login':'logout')+'</span><span id="btnClockLabel">'+(clockStatus==='can-in'?'Clock In':'Clock Out')+'</span>';
   }
 }
 
@@ -667,7 +669,6 @@ function generateQR() {
   const g = GEDUNG_LOCATIONS[idx];
   if (!g) { showToast('Pilih lokasi dulu.', false); return; }
 
-  // QR content: JSON token with location info + timestamp
   const token = JSON.stringify({
     type: 'alhikmah-presensi',
     gedung: g.nama,
@@ -680,23 +681,31 @@ function generateQR() {
 
   const container = document.getElementById('qrCanvas');
   container.innerHTML = '';
-  
-  const canvas = document.createElement('canvas');
-  QRCode.toCanvas(canvas, token, { width: 220, margin: 2, color: { dark: '#1a1b1f', light: '#ffffff' } }, (err) => {
-    if (err) { showToast('Gagal generate QR.', false); return; }
-    container.appendChild(canvas);
-  });
 
-  document.getElementById('qrLabel').textContent = g.nama + ' — berlaku 5 menit';
-  document.getElementById('qrOutput').classList.remove('hidden');
+  try {
+    new QRCode(container, {
+      text: token,
+      width: 220,
+      height: 220,
+      colorDark: '#1a1b1f',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    document.getElementById('qrLabel').textContent = g.nama + ' — berlaku 5 menit';
+    document.getElementById('qrOutput').classList.remove('hidden');
+  } catch(e) {
+    showToast('Gagal generate QR: ' + e.message, false);
+  }
 }
 
 function downloadQR() {
+  const img = document.querySelector('#qrCanvas img');
   const canvas = document.querySelector('#qrCanvas canvas');
-  if (!canvas) return;
+  const src = img ? img.src : (canvas ? canvas.toDataURL('image/png') : null);
+  if (!src) { showToast('QR belum digenerate.', false); return; }
   const link = document.createElement('a');
   link.download = 'QR_Presensi_' + (GEDUNG_LOCATIONS[document.getElementById('qrGedungSelect').value]?.nama || 'lokasi') + '.png';
-  link.href = canvas.toDataURL('image/png');
+  link.href = src;
   link.click();
 }
 
@@ -740,4 +749,38 @@ function togglePass() {
   const ico = document.getElementById('eyeIcon');
   if (inp.type==='password') { inp.type='text'; ico.textContent='visibility'; }
   else { inp.type='password'; ico.textContent='visibility_off'; }
+}
+
+// === CAMERA ===
+let cameraStream = null;
+
+async function toggleCamera() {
+  const video = document.getElementById('cameraFeed');
+  const placeholder = document.getElementById('cameraPlaceholder');
+  const icon = document.getElementById('camToggleIcon');
+  const label = document.getElementById('camToggleLabel');
+
+  if (cameraStream) {
+    // Stop camera
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+    video.srcObject = null;
+    placeholder.classList.remove('hidden');
+    icon.textContent = 'videocam';
+    label.textContent = 'Buka Kamera';
+    return;
+  }
+
+  // Start camera
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } }
+    });
+    video.srcObject = cameraStream;
+    placeholder.classList.add('hidden');
+    icon.textContent = 'videocam_off';
+    label.textContent = 'Tutup Kamera';
+  } catch(e) {
+    showToast('Tidak bisa akses kamera: ' + (e.message || 'Izin ditolak'), false);
+  }
 }
