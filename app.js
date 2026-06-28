@@ -11,7 +11,7 @@ const GEDUNG_LOCATIONS = [
   { nama: 'KB Al-Hikmah', lat: -6.9730, lng: 109.6830, radius: 100 },
 ];
 const ADMIN_NIP = 'admin';
-const RADIUS_OVERRIDE = false;
+const RADIUS_OVERRIDE = true; // SET false UNTUK PRODUCTION
 
 // === STATE ===
 let currentUser = null;
