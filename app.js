@@ -675,8 +675,7 @@ function generateQR() {
     lat: g.lat,
     lng: g.lng,
     radius: g.radius,
-    generated: new Date().toISOString(),
-    valid_minutes: 5
+    generated: new Date().toISOString()
   });
 
   const container = document.getElementById('qrCanvas');
@@ -691,7 +690,7 @@ function generateQR() {
       colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel.M
     });
-    document.getElementById('qrLabel').textContent = g.nama + ' — berlaku 5 menit';
+    document.getElementById('qrLabel').textContent = g.nama + ' — berlaku sampai di-generate ulang';
     document.getElementById('qrOutput').classList.remove('hidden');
   } catch(e) {
     showToast('Gagal generate QR: ' + e.message, false);
@@ -751,36 +750,137 @@ function togglePass() {
   else { inp.type='password'; ico.textContent='visibility_off'; }
 }
 
-// === CAMERA ===
-let cameraStream = null;
+// === QR SCANNER (using html5-qrcode) ===
+let html5QrCode = null;
+let scannerRunning = false;
+let usingBackCamera = true;
 
-async function toggleCamera() {
-  const video = document.getElementById('cameraFeed');
-  const placeholder = document.getElementById('cameraPlaceholder');
-  const icon = document.getElementById('camToggleIcon');
-  const label = document.getElementById('camToggleLabel');
+function toggleScanner() {
+  if (scannerRunning) {
+    stopScanner();
+  } else {
+    startScanner();
+  }
+}
 
-  if (cameraStream) {
-    // Stop camera
-    cameraStream.getTracks().forEach(t => t.stop());
-    cameraStream = null;
-    video.srcObject = null;
-    placeholder.classList.remove('hidden');
-    icon.textContent = 'videocam';
-    label.textContent = 'Buka Kamera';
-    return;
+async function startScanner() {
+  const label = document.getElementById('scanToggleLabel');
+  const btn = document.getElementById('btnScanToggle');
+  const switchBtn = document.getElementById('btnSwitchCam');
+
+  if (!html5QrCode) {
+    html5QrCode = new Html5Qrcode('qrReader');
   }
 
-  // Start camera
+  const config = {
+    fps: 10,
+    qrbox: { width: 200, height: 200 },
+    aspectRatio: 1.0
+  };
+
+  const cameraFacing = usingBackCamera ? { facingMode: 'environment' } : { facingMode: 'user' };
+
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } }
-    });
-    video.srcObject = cameraStream;
-    placeholder.classList.add('hidden');
-    icon.textContent = 'videocam_off';
-    label.textContent = 'Tutup Kamera';
-  } catch(e) {
-    showToast('Tidak bisa akses kamera: ' + (e.message || 'Izin ditolak'), false);
+    await html5QrCode.start(
+      cameraFacing,
+      config,
+      onQRCodeScanned,
+      () => {} // ignore errors during scanning
+    );
+    scannerRunning = true;
+    label.textContent = 'Stop Scan';
+    btn.className = btn.className.replace('bg-warning', 'bg-error');
+    switchBtn.classList.remove('hidden');
+  } catch (err) {
+    showToast('Gagal buka kamera: ' + (err.message || err), false);
+  }
+}
+
+async function stopScanner() {
+  const label = document.getElementById('scanToggleLabel');
+  const btn = document.getElementById('btnScanToggle');
+  const switchBtn = document.getElementById('btnSwitchCam');
+
+  if (html5QrCode && scannerRunning) {
+    await html5QrCode.stop();
+    html5QrCode.clear();
+  }
+  scannerRunning = false;
+  label.textContent = 'Mulai Scan';
+  btn.className = btn.className.replace('bg-error', 'bg-warning');
+  switchBtn.classList.add('hidden');
+}
+
+async function switchCamera() {
+  usingBackCamera = !usingBackCamera;
+  if (scannerRunning) {
+    await stopScanner();
+    setTimeout(() => startScanner(), 300);
+  }
+}
+
+// Called automatically when QR is detected
+async function onQRCodeScanned(decodedText) {
+  // Stop scanner immediately to prevent double scan
+  await stopScanner();
+
+  const resultEl = document.getElementById('scanResult');
+  resultEl.classList.remove('hidden');
+
+  try {
+    const data = JSON.parse(decodedText);
+
+    // Validate QR format
+    if (data.type !== 'alhikmah-presensi') {
+      resultEl.textContent = '✕ QR Code tidak valid (bukan QR presensi).';
+      resultEl.className = 'text-xs text-error text-center';
+      return;
+    }
+
+    resultEl.textContent = '✓ QR terdeteksi: ' + data.gedung + ' — memproses...';
+    resultEl.className = 'text-xs text-secondary text-center font-semibold';
+
+    // Auto clock-in or clock-out based on current status
+    if (!currentUser) { showToast('Belum login.', false); return; }
+
+    const btn = document.getElementById('btnClock');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ms animate-spin text-[22px]">autorenew</span> Memproses...';
+
+    const action = clockStatus === 'can-in' ? 'clockIn' : clockStatus === 'can-out' ? 'clockOut' : null;
+
+    if (!action) {
+      resultEl.textContent = '✓ Presensi hari ini sudah selesai.';
+      btn.innerHTML = '<span class="ms text-[22px]" id="btnClockIcon">done_all</span><span id="btnClockLabel">Presensi Selesai</span>';
+      return;
+    }
+
+    const params = {
+      action,
+      nip: currentUser.nip,
+      lat: data.lat || userLat || '',
+      lng: data.lng || userLng || '',
+      gedung: data.gedung || ''
+    };
+
+    const res = await gasCall(params);
+    if (res && res.ok) {
+      showToast(res.msg, true);
+      resultEl.textContent = '✓ ' + res.msg;
+      resultEl.className = 'text-xs text-secondary text-center font-semibold';
+      if (window.AndroidBridge) AndroidBridge.showToast(res.msg);
+      btn.innerHTML = '<span class="ms text-[22px]" id="btnClockIcon">done_all</span><span id="btnClockLabel">Memuat...</span>';
+      setTimeout(() => loadStatusHariIni(), 800);
+    } else {
+      showToast(res?.msg || 'Gagal.', false);
+      resultEl.textContent = '✕ ' + (res?.msg || 'Gagal memproses.');
+      resultEl.className = 'text-xs text-error text-center';
+      btn.disabled = false;
+      btn.innerHTML = '<span class="ms text-[22px]" id="btnClockIcon">' + (clockStatus === 'can-in' ? 'login' : 'logout') + '</span><span id="btnClockLabel">' + (clockStatus === 'can-in' ? 'Clock In' : 'Clock Out') + '</span>';
+    }
+  } catch (e) {
+    // Not a valid JSON QR
+    resultEl.textContent = '✕ QR Code tidak dikenali.';
+    resultEl.className = 'text-xs text-error text-center';
   }
 }

@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
 tailwind.config = {
   darkMode:'class',
@@ -47,6 +48,10 @@ body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
 .ios-shadow{box-shadow:0 4px 16px rgba(0,0,0,.07);}
 .press{transition:transform .1s;} .press:active{transform:scale(.97);}
 #scannerBox{position:relative;overflow:hidden;background:#000;aspect-ratio:1;border-radius:1.25rem;}
+#qrReader{width:100%;height:100%;}
+#qrReader video{object-fit:cover;border-radius:1.25rem;}
+#qrReader__scan_region{border-radius:1.25rem;overflow:hidden;}
+#qrReader__dashboard{display:none !important;}
 .scan-frame{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;
   border:2px solid rgba(255,149,0,.8);border-radius:20px;box-shadow:0 0 0 2000px rgba(0,0,0,.45);}
 .scan-line{position:absolute;top:0;left:0;right:0;height:2px;
@@ -172,32 +177,26 @@ body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
     </section>
     <section class="flex flex-col gap-3">
       <div class="flex justify-between items-center px-1">
-        <h3 class="text-headline-sm text-on-surface">Konfirmasi Kehadiran</h3>
+        <h3 class="text-headline-sm text-on-surface">Scan QR Presensi</h3>
         <div class="flex items-center gap-2">
           <span id="lokasiDot" class="w-2 h-2 rounded-full bg-outline animate-pulse"></span>
           <span id="lokasiInfo" class="text-label-sm text-on-surface-variant">Mendeteksi lokasi...</span>
         </div>
       </div>
       <div id="scannerBox">
-        <video id="cameraFeed" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
-        <div id="cameraPlaceholder" class="absolute inset-0 bg-slate-900 flex items-center justify-center">
-          <span class="ms text-white text-[80px] opacity-10">camera_outdoor</span>
-        </div>
-        <div class="scan-frame">
-          <div class="scan-line"></div>
-          <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
-          <div class="corner corner-bl"></div><div class="corner corner-br"></div>
-        </div>
-        <div class="absolute bottom-4 left-0 right-0 text-center">
-          <p class="text-white text-label-sm bg-black/50 glass inline-block px-4 py-1.5 rounded-full">
-            Posisikan wajah atau QR code dalam bingkai
-          </p>
-        </div>
+        <div id="qrReader" class="w-full h-full"></div>
       </div>
-      <button onclick="toggleCamera()" class="press text-primary text-xs font-semibold flex items-center gap-1 self-center mt-2">
-        <span class="ms text-[16px]" id="camToggleIcon">videocam</span>
-        <span id="camToggleLabel">Buka Kamera</span>
-      </button>
+      <div class="flex items-center justify-between">
+        <button onclick="toggleScanner()" id="btnScanToggle" class="press bg-warning text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1">
+          <span class="ms text-[16px]">qr_code_scanner</span>
+          <span id="scanToggleLabel">Mulai Scan</span>
+        </button>
+        <button onclick="switchCamera()" id="btnSwitchCam" class="hidden press text-on-surface-variant text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1 border border-outline-variant">
+          <span class="ms text-[16px]">flip_camera_ios</span> Ganti Kamera
+        </button>
+      </div>
+      <p id="scanResult" class="text-xs text-on-surface-variant text-center hidden"></p>
+    </section>
     </section>
     <section class="mt-2">
       <button id="btnClock" onclick="handleClock()" disabled
@@ -206,7 +205,7 @@ body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
         <span id="btnClockLabel">Clock In</span>
       </button>
       <p class="text-center text-label-sm text-on-surface-variant mt-3 px-6">
-        Pastikan Anda berada di radius area gedung sebelum melakukan scan.
+        Scan QR code yang dipasang di gedung untuk presensi otomatis, atau tekan tombol di atas jika GPS valid.
       </p>
     </section>
   </div>
