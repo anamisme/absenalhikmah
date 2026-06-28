@@ -3,7 +3,7 @@
 // ============================================================
 
 // === CONFIG ===
-const GAS_URL = 'https://script.google.com/macros/s/GANTI_DEPLOYMENT_ID/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxFtCfNLDiu38u01JveCI2KK5c_RP2odcyXcU6QjwPmem7l8C9wGY3QZ3t3u4c2-0a7/exec';
 const GEDUNG_LOCATIONS = [
   { nama: 'MTs Al-Hikmah', lat: -6.9700, lng: 109.6800, radius: 100 },
   { nama: 'MIS Al-Hikmah', lat: -6.9710, lng: 109.6810, radius: 100 },
@@ -167,8 +167,10 @@ async function doLogin() {
 function bootApp() {
   document.getElementById('pageLogin').classList.add('hidden');
   document.getElementById('pageLogin').classList.remove('active');
-  // Check if admin
-  if (currentUser.nip === ADMIN_NIP || currentUser.jabatan === 'Admin') {
+  // Check if admin — robust: trim + lowercase
+  const nipClean = String(currentUser.nip).trim().toLowerCase();
+  const jabatanClean = String(currentUser.jabatan || '').trim().toLowerCase();
+  if (nipClean === ADMIN_NIP.toLowerCase() || jabatanClean === 'admin') {
     document.getElementById('adminShell').classList.remove('hidden');
     document.getElementById('appShell').classList.add('hidden');
     bootAdmin();
