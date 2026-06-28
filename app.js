@@ -4,7 +4,7 @@
 
 // === CONFIG ===
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxFtCfNLDiu38u01JveCI2KK5c_RP2odcyXcU6QjwPmem7l8C9wGY3QZ3t3u4c2-0a7/exec';
-const GEDUNG_LOCATIONS = [
+let GEDUNG_LOCATIONS = [
   { nama: 'Yayasan Al-Hikmah', lat: -6.932647, lng: 109.655811, radius: 100 },
 ];
 const ADMIN_NIP = 'admin';
@@ -44,6 +44,14 @@ function startClock() {
 function pad(n) { return String(n).padStart(2,'0'); }
 
 // === GEOLOCATION & FAKE GPS ===
+async function loadLocationsFromServer() {
+  const res = await gasCall({ action: 'getLocations' });
+  if (res && res.ok && res.data && res.data.length) {
+    GEDUNG_LOCATIONS.length = 0;
+    res.data.forEach(g => GEDUNG_LOCATIONS.push(g));
+  }
+}
+
 function getLocation() {
   const dot = document.getElementById('lokasiDot');
   const info = document.getElementById('lokasiInfo');
@@ -186,6 +194,8 @@ function bootApp() {
   const h = new Date().getHours();
   document.getElementById('greetLabel').textContent = h<11?'Selamat Pagi,':h<15?'Selamat Siang,':h<18?'Selamat Sore,':'Selamat Malam,';
   loadStatusHariIni();
+  // Load locations from server
+  loadLocationsFromServer();
   getLocation();
   showPage('pageHome');
 }
@@ -551,20 +561,143 @@ function exportPresensi() {
 }
 
 // === ADMIN: SETTINGS ===
-function loadAdminSettings() {
+async function loadAdminSettings() {
+  // Load locations from backend
+  const res = await gasCall({ action:'getLocations' });
+  if (res && res.ok && res.data) {
+    // Sync local GEDUNG_LOCATIONS with server
+    GEDUNG_LOCATIONS.length = 0;
+    res.data.forEach(g => GEDUNG_LOCATIONS.push(g));
+  }
+  renderGedungList();
+  populateQRSelect();
+}
+
+function renderGedungList() {
   const gedungList = document.getElementById('gedungList');
-  gedungList.innerHTML = GEDUNG_LOCATIONS.map((g,i) => `
+  if (!GEDUNG_LOCATIONS.length) {
+    gedungList.innerHTML = '<p class="text-xs text-on-surface-variant text-center py-2">Belum ada lokasi.</p>';
+    return;
+  }
+  gedungList.innerHTML = GEDUNG_LOCATIONS.map((g, i) => `
     <div class="flex items-center gap-3 p-3 bg-surface-container-low rounded-xl">
       <span class="ms text-primary text-[20px]">location_on</span>
       <div class="flex-1">
         <p class="text-sm font-medium">${g.nama}</p>
-        <p class="text-[10px] text-on-surface-variant">${g.lat}, ${g.lng} · r: ${g.radius}m</p>
+        <p class="text-[10px] text-on-surface-variant">${g.lat}, ${g.lng} · radius: ${g.radius}m</p>
       </div>
+      <button onclick="editGedung(${i})" class="ms text-primary text-[18px] opacity-60 hover:opacity-100">edit</button>
+      <button onclick="deleteGedung(${i})" class="ms text-error text-[18px] opacity-60 hover:opacity-100">delete</button>
     </div>`).join('');
 }
 
+function populateQRSelect() {
+  const sel = document.getElementById('qrGedungSelect');
+  if (!sel) return;
+  sel.innerHTML = GEDUNG_LOCATIONS.map((g, i) => `<option value="${i}">${g.nama}</option>`).join('');
+}
+
+// --- Gedung Modal ---
+let editingGedungIdx = -1;
+
 function showAddGedungModal() {
-  showToast('Fitur tambah lokasi — edit di konfigurasi.', false);
+  editingGedungIdx = -1;
+  document.getElementById('gedungModalTitle').textContent = 'Tambah Lokasi Gedung';
+  document.getElementById('gedungNama').value = '';
+  document.getElementById('gedungLat').value = '';
+  document.getElementById('gedungLng').value = '';
+  document.getElementById('gedungRadius').value = '100';
+  document.getElementById('addGedungModal').classList.remove('hidden');
+}
+
+function editGedung(idx) {
+  editingGedungIdx = idx;
+  const g = GEDUNG_LOCATIONS[idx];
+  document.getElementById('gedungModalTitle').textContent = 'Edit Lokasi Gedung';
+  document.getElementById('gedungNama').value = g.nama;
+  document.getElementById('gedungLat').value = g.lat;
+  document.getElementById('gedungLng').value = g.lng;
+  document.getElementById('gedungRadius').value = g.radius;
+  document.getElementById('addGedungModal').classList.remove('hidden');
+}
+
+function closeGedungModal() { document.getElementById('addGedungModal').classList.add('hidden'); }
+
+function useMyLocation() {
+  if (!navigator.geolocation) { showToast('GPS tidak tersedia.', false); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    document.getElementById('gedungLat').value = pos.coords.latitude.toFixed(6);
+    document.getElementById('gedungLng').value = pos.coords.longitude.toFixed(6);
+    showToast('Lokasi terisi dari GPS.', true);
+  }, () => showToast('Gagal mendapatkan lokasi.', false), { enableHighAccuracy: true });
+}
+
+async function saveGedung() {
+  const nama = document.getElementById('gedungNama').value.trim();
+  const lat = parseFloat(document.getElementById('gedungLat').value);
+  const lng = parseFloat(document.getElementById('gedungLng').value);
+  const radius = parseInt(document.getElementById('gedungRadius').value) || 100;
+  if (!nama || isNaN(lat) || isNaN(lng)) { showToast('Lengkapi nama, lat, dan lng.', false); return; }
+  
+  const action = editingGedungIdx >= 0 ? 'updateLocation' : 'addLocation';
+  const params = { action, nama, lat: String(lat), lng: String(lng), radius: String(radius) };
+  if (editingGedungIdx >= 0) params.index = String(editingGedungIdx);
+  
+  const res = await gasCall(params);
+  if (res && res.ok) {
+    showToast(res.msg, true);
+    closeGedungModal();
+    loadAdminSettings();
+  } else {
+    showToast(res?.msg || 'Gagal menyimpan.', false);
+  }
+}
+
+async function deleteGedung(idx) {
+  if (!confirm('Hapus lokasi "' + GEDUNG_LOCATIONS[idx].nama + '"?')) return;
+  const res = await gasCall({ action: 'deleteLocation', index: String(idx) });
+  if (res && res.ok) { showToast('Lokasi dihapus.', true); loadAdminSettings(); }
+  else showToast(res?.msg || 'Gagal.', false);
+}
+
+// --- QR Code Generation ---
+function generateQR() {
+  const sel = document.getElementById('qrGedungSelect');
+  const idx = parseInt(sel.value);
+  const g = GEDUNG_LOCATIONS[idx];
+  if (!g) { showToast('Pilih lokasi dulu.', false); return; }
+
+  // QR content: JSON token with location info + timestamp
+  const token = JSON.stringify({
+    type: 'alhikmah-presensi',
+    gedung: g.nama,
+    lat: g.lat,
+    lng: g.lng,
+    radius: g.radius,
+    generated: new Date().toISOString(),
+    valid_minutes: 5
+  });
+
+  const container = document.getElementById('qrCanvas');
+  container.innerHTML = '';
+  
+  const canvas = document.createElement('canvas');
+  QRCode.toCanvas(canvas, token, { width: 220, margin: 2, color: { dark: '#1a1b1f', light: '#ffffff' } }, (err) => {
+    if (err) { showToast('Gagal generate QR.', false); return; }
+    container.appendChild(canvas);
+  });
+
+  document.getElementById('qrLabel').textContent = g.nama + ' — berlaku 5 menit';
+  document.getElementById('qrOutput').classList.remove('hidden');
+}
+
+function downloadQR() {
+  const canvas = document.querySelector('#qrCanvas canvas');
+  if (!canvas) return;
+  const link = document.createElement('a');
+  link.download = 'QR_Presensi_' + (GEDUNG_LOCATIONS[document.getElementById('qrGedungSelect').value]?.nama || 'lokasi') + '.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
 }
 
 async function saveSettings() {

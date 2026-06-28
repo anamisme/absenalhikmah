@@ -3,10 +3,11 @@
 //  Pasang di: Extensions > Apps Script > Paste > Deploy as Web App
 // ============================================================
 
-const SPREADSHEET_ID = 'GANTI_DENGAN_ID_SPREADSHEET_KAMU'; // <-- GANTI INI
+const SPREADSHEET_ID = '13etuXlNm_gPj5FhEOZpHmkBPQTZtOqrResmIwaos85M';
 const SHEET_KARYAWAN  = 'Karyawan';
 const SHEET_PRESENSI  = 'Presensi';
 const SHEET_SETTINGS  = 'Settings';
+const SHEET_LOCATIONS = 'Locations';
 let JAM_MASUK_BATAS   = '07:00'; // default, bisa di-override dari Settings sheet
 
 // ─── Entry Point ─────────────────────────────────────────────
@@ -32,6 +33,10 @@ function doGet(e) {
       case 'getAllPresensi':    result = getAllPresensi(e.parameter.bulan, e.parameter.tahun); break;
       case 'exportCSV':         return exportCSV(e.parameter.bulan, e.parameter.tahun);
       case 'updateSettings':    result = updateSettings(e.parameter); break;
+      case 'getLocations':      result = getLocations(); break;
+      case 'addLocation':       result = addLocation(e.parameter); break;
+      case 'updateLocation':    result = updateLocation(e.parameter); break;
+      case 'deleteLocation':    result = deleteLocation(e.parameter); break;
       default:                  result = { ok: false, msg: 'Action tidak dikenal: ' + action };
     }
   } catch (err) {
@@ -364,6 +369,58 @@ function exportCSV(bulan, tahun) {
     .downloadAsFile('presensi_'+bulan+'_'+tahun+'.csv');
 }
 
+// ─── LOCATIONS CRUD ───────────────────────────────────────────
+function getLocations() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sh = ss.getSheetByName(SHEET_LOCATIONS);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_LOCATIONS);
+    sh.appendRow(['Nama', 'Lat', 'Lng', 'Radius']);
+    sh.appendRow(['Yayasan Al-Hikmah', -6.932647, 109.655811, 100]);
+  }
+  const data = sh.getDataRange().getValues();
+  const result = [];
+  for (let i = 1; i < data.length; i++) {
+    if (!data[i][0]) continue;
+    result.push({ nama: data[i][0], lat: parseFloat(data[i][1]), lng: parseFloat(data[i][2]), radius: parseInt(data[i][3]) || 100 });
+  }
+  return { ok: true, data: result };
+}
+
+function addLocation(params) {
+  const { nama, lat, lng, radius } = params;
+  if (!nama || !lat || !lng) return { ok: false, msg: 'Nama, lat, dan lng wajib diisi.' };
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sh = ss.getSheetByName(SHEET_LOCATIONS);
+  if (!sh) { sh = ss.insertSheet(SHEET_LOCATIONS); sh.appendRow(['Nama', 'Lat', 'Lng', 'Radius']); }
+  sh.appendRow([nama, parseFloat(lat), parseFloat(lng), parseInt(radius) || 100]);
+  return { ok: true, msg: 'Lokasi "' + nama + '" berhasil ditambahkan.' };
+}
+
+function updateLocation(params) {
+  const { index, nama, lat, lng, radius } = params;
+  if (index === undefined || !nama || !lat || !lng) return { ok: false, msg: 'Data tidak lengkap.' };
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sh = ss.getSheetByName(SHEET_LOCATIONS);
+  if (!sh) return { ok: false, msg: 'Sheet Locations belum ada.' };
+  const rowNum = parseInt(index) + 2; // +1 header, +1 zero-index
+  sh.getRange(rowNum, 1).setValue(nama);
+  sh.getRange(rowNum, 2).setValue(parseFloat(lat));
+  sh.getRange(rowNum, 3).setValue(parseFloat(lng));
+  sh.getRange(rowNum, 4).setValue(parseInt(radius) || 100);
+  return { ok: true, msg: 'Lokasi "' + nama + '" berhasil diupdate.' };
+}
+
+function deleteLocation(params) {
+  const idx = parseInt(params.index);
+  if (isNaN(idx)) return { ok: false, msg: 'Index tidak valid.' };
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sh = ss.getSheetByName(SHEET_LOCATIONS);
+  if (!sh) return { ok: false, msg: 'Sheet Locations belum ada.' };
+  sh.deleteRow(idx + 2); // +1 header, +1 zero-index
+  return { ok: true, msg: 'Lokasi dihapus.' };
+}
+
 // ─── UTILITIES ───────────────────────────────────────────────
 function getSheet(name) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -384,6 +441,9 @@ function initSheet(ss, name) {
   } else if (name === SHEET_SETTINGS) {
     sh.appendRow(['Key', 'Value']);
     sh.appendRow(['jam_masuk_batas', '07:00']);
+  } else if (name === SHEET_LOCATIONS) {
+    sh.appendRow(['Nama', 'Lat', 'Lng', 'Radius']);
+    sh.appendRow(['Yayasan Al-Hikmah', -6.932647, 109.655811, 100]);
   }
   return sh;
 }
@@ -409,8 +469,8 @@ function hitungStatus(jam) {
 // ─── SETUP AWAL (jalankan sekali dari editor) ─────────────────
 function setupSpreadsheet() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  [SHEET_KARYAWAN, SHEET_PRESENSI, SHEET_SETTINGS].forEach(n => {
+  [SHEET_KARYAWAN, SHEET_PRESENSI, SHEET_SETTINGS, SHEET_LOCATIONS].forEach(n => {
     if (!ss.getSheetByName(n)) initSheet(ss, n);
   });
-  Logger.log('Setup selesai. Sheet Karyawan, Presensi, dan Settings telah dibuat.');
+  Logger.log('Setup selesai. Sheet Karyawan, Presensi, Settings, dan Locations telah dibuat.');
 }

@@ -7,6 +7,7 @@
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script>
 tailwind.config = {
   darkMode:'class',
@@ -375,11 +376,30 @@ body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
       </div>
     </div>
     <div class="admin-card flex flex-col gap-4">
-      <h3 class="text-sm font-semibold">Lokasi Gedung</h3>
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold">Lokasi Gedung</h3>
+        <button onclick="showAddGedungModal()" class="press bg-primary text-white text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center gap-1">
+          <span class="ms text-[14px]">add_location</span> Tambah
+        </button>
+      </div>
       <div id="gedungList" class="flex flex-col gap-3"></div>
-      <button onclick="showAddGedungModal()" class="press text-primary text-xs font-semibold flex items-center gap-1">
-        <span class="ms text-[16px]">add_location</span> Tambah Lokasi
-      </button>
+    </div>
+    <div class="admin-card flex flex-col gap-4">
+      <h3 class="text-sm font-semibold">Generate QR Code Lokasi</h3>
+      <p class="text-xs text-on-surface-variant">QR code berisi token lokasi. Karyawan scan QR ini untuk verifikasi kehadiran di gedung.</p>
+      <div class="flex items-center gap-3">
+        <select id="qrGedungSelect" class="bg-surface-container-low rounded-xl px-4 h-10 text-sm border border-outline-variant flex-1"></select>
+        <button onclick="generateQR()" class="press bg-tertiary-container text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1">
+          <span class="ms text-[14px]">qr_code_2</span> Generate
+        </button>
+      </div>
+      <div id="qrOutput" class="hidden flex flex-col items-center gap-3 pt-2">
+        <div id="qrCanvas" class="bg-white p-4 rounded-xl ios-shadow"></div>
+        <p id="qrLabel" class="text-xs font-medium text-on-surface-variant"></p>
+        <button onclick="downloadQR()" class="press text-primary text-xs font-semibold flex items-center gap-1">
+          <span class="ms text-[14px]">download</span> Download QR
+        </button>
+      </div>
     </div>
     <div class="admin-card flex flex-col gap-3">
       <h3 class="text-sm font-semibold">Info Sistem</h3>
@@ -429,6 +449,26 @@ body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
     <div class="flex gap-3">
       <button onclick="closeAddKaryawanModal()" class="press flex-1 h-10 border border-outline-variant rounded-xl text-sm font-semibold">Batal</button>
       <button onclick="saveKaryawan()" class="press flex-1 h-10 bg-primary text-white rounded-xl text-sm font-semibold">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Gedung Modal -->
+<div id="addGedungModal" class="hidden fixed inset-0 z-[998] bg-black/60 flex items-end justify-center p-4">
+  <div class="bg-surface w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4 ios-shadow max-h-[80vh] overflow-y-auto">
+    <h3 class="text-headline-sm font-bold" id="gedungModalTitle">Tambah Lokasi Gedung</h3>
+    <div class="flex flex-col gap-3">
+      <input id="gedungNama" type="text" placeholder="Nama Gedung (misal: MTs Al-Hikmah)" class="bg-surface-container-low rounded-xl px-4 h-10 text-sm border border-outline-variant outline-none focus:border-primary"/>
+      <input id="gedungLat" type="text" inputmode="decimal" placeholder="Latitude (misal: -6.932647)" class="bg-surface-container-low rounded-xl px-4 h-10 text-sm border border-outline-variant outline-none focus:border-primary"/>
+      <input id="gedungLng" type="text" inputmode="decimal" placeholder="Longitude (misal: 109.655811)" class="bg-surface-container-low rounded-xl px-4 h-10 text-sm border border-outline-variant outline-none focus:border-primary"/>
+      <input id="gedungRadius" type="number" placeholder="Radius (meter, default: 100)" value="100" class="bg-surface-container-low rounded-xl px-4 h-10 text-sm border border-outline-variant outline-none focus:border-primary"/>
+      <button onclick="useMyLocation()" class="press text-primary text-xs font-semibold flex items-center gap-1 self-start">
+        <span class="ms text-[14px]">my_location</span> Gunakan Lokasi Saya Saat Ini
+      </button>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="closeGedungModal()" class="press flex-1 h-10 border border-outline-variant rounded-xl text-sm font-semibold">Batal</button>
+      <button onclick="saveGedung()" class="press flex-1 h-10 bg-primary text-white rounded-xl text-sm font-semibold">Simpan</button>
     </div>
   </div>
 </div>
