@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="id" class="light">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Presensi – Yayasan Al-Hikmah</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+  darkMode:'class',
+  theme:{extend:{
+    colors:{
+      primary:'#0058bc','primary-container':'#0070eb',
+      'on-primary':'#ffffff','on-primary-container':'#fefcff',
+      secondary:'#006e28','on-secondary':'#ffffff',
+      surface:'#ffffff','surface-bright':'#faf9fe',
+      'surface-container':'#eeedf3','surface-container-low':'#f4f3f8',
+      'surface-container-high':'#e9e7ed','surface-container-highest':'#e3e2e7',
+      'on-surface':'#1a1b1f','on-surface-variant':'#414755',
+      background:'#F2F2F7',outline:'#717786','outline-variant':'#c1c6d7',
+      error:'#ba1a1a','error-container':'#ffdad6','on-error-container':'#93000a',
+      warning:'#FF9500','inverse-surface':'#2f3034','inverse-on-surface':'#f1f0f5',
+    },
+    borderRadius:{DEFAULT:'0.25rem',lg:'0.5rem',xl:'0.75rem','2xl':'1.25rem',full:'9999px'},
+    fontFamily:{body:['Inter']},
+  }}
+}
+</script>
+<style>
+  *{-webkit-tap-highlight-color:transparent;}
+  body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
+  .ms{font-family:'Material Symbols Outlined';font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;line-height:1;}
+  .ms-fill{font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;}
+  .glass{backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);}
+  .ios-shadow{box-shadow:0 4px 16px rgba(0,0,0,.07);}
+  .press{transition:transform .1s;} .press:active{transform:scale(.97);}
+
+  /* Scanner */
+  #scannerBox{position:relative;overflow:hidden;background:#000;aspect-ratio:1;border-radius:1.25rem;}
+  .scan-frame{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;
+    border:2px solid rgba(255,149,0,.8);border-radius:20px;box-shadow:0 0 0 2000px rgba(0,0,0,.45);}
+  .scan-line{position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(to right,transparent,#FF9500,transparent);
+    animation:scanMove 2s linear infinite;}
+  @keyframes scanMove{0%{top:0}100%{top:200px}}
+  .corner{position:absolute;width:22px;height:22px;border-color:#FF9500;border-style:solid;}
+  .corner-tl{top:0;left:0;border-width:3px 0 0 3px;border-radius:6px 0 0 0;}
+  .corner-tr{top:0;right:0;border-width:3px 3px 0 0;border-radius:0 6px 0 0;}
+  .corner-bl{bottom:0;left:0;border-width:0 0 3px 3px;border-radius:0 0 0 6px;}
+  .corner-br{bottom:0;right:0;border-width:0 3px 3px 0;border-radius:0 0 6px 0;}
+
+  /* Toast */
+  #toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(20px);
+    opacity:0;transition:all .3s;z-index:999;pointer-events:none;white-space:nowrap;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* Page transitions */
+  .page{display:none;} .page.active{display:block;}
+
+  /* Skeleton pulse */
+  .skel{background:linear-gradient(90deg,#e5e7eb 25%,#f3f4f6 50%,#e5e7eb 75%);
+    background-size:200% 100%;animation:skelAnim 1.5s infinite;border-radius:8px;}
+  @keyframes skelAnim{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+  /* Status badge colors */
+  .badge-ok{background:#f0fdf4;color:#166534;}
+  .badge-late{background:#fff7ed;color:#c2410c;}
+  .badge-alfa{background:#fef2f2;color:#991b1b;}
+  .badge-izin{background:#eff6ff;color:#1d4ed8;}
+</style>
+</head>
+<body class="bg-background text-on-surface min-h-screen">
+
+<!-- ═══════════════════════════════════════════════ LOGIN PAGE -->
+<div id="pageLogin" class="page active min-h-screen flex flex-col justify-center px-6 gap-8 pb-10">
+  <div class="flex flex-col items-center gap-3 pt-16">
+    <div class="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center shadow-lg">
+      <span class="ms text-white text-4xl">fingerprint</span>
+    </div>
+    <h1 class="text-2xl font-bold text-on-surface tracking-tight">Presensi Al-Hikmah</h1>
+    <p class="text-sm text-on-surface-variant text-center">Masuk untuk mencatat kehadiran Anda</p>
+  </div>
+
+  <div class="bg-surface rounded-2xl p-6 ios-shadow flex flex-col gap-4">
+    <div class="flex flex-col gap-1.5">
+      <label class="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">NIP / ID Karyawan</label>
+      <div class="flex items-center gap-3 bg-surface-container-low rounded-xl px-4 h-12 border border-outline-variant focus-within:border-primary transition-colors">
+        <span class="ms text-on-surface-variant text-[20px]">badge</span>
+        <input id="inputNip" type="text" inputmode="numeric" placeholder="Masukkan NIP"
+          class="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-on-surface-variant/50"/>
+      </div>
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <label class="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Password</label>
+      <div class="flex items-center gap-3 bg-surface-container-low rounded-xl px-4 h-12 border border-outline-variant focus-within:border-primary transition-colors">
+        <span class="ms text-on-surface-variant text-[20px]">lock</span>
+        <input id="inputPass" type="password" placeholder="Password"
+          class="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-on-surface-variant/50"/>
+        <button onclick="togglePass()" class="ms text-on-surface-variant text-[20px]" id="eyeIcon">visibility_off</button>
+      </div>
+    </div>
+    <button onclick="doLogin()" id="btnLogin"
+      class="press w-full h-12 bg-primary text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 mt-2 ios-shadow">
+      <span class="ms text-[20px]">login</span> Masuk
+    </button>
+    <p id="loginErr" class="text-xs text-error text-center hidden"></p>
+  </div>
+
+  <p class="text-center text-xs text-on-surface-variant">Yayasan Al-Hikmah © 2025 · Baitul Hikmah</p>
+</div>
+
+<!-- ═══════════════════════════════════════════ MAIN APP SHELL -->
+<div id="appShell" class="hidden">
+
+  <!-- Top App Bar -->
+  <header id="topBar" class="fixed top-0 w-full z-50 glass bg-surface/80 flex justify-between items-center px-4 h-16 shadow-sm">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+        <span class="ms text-white text-lg">fingerprint</span>
+      </div>
+      <span class="font-bold text-primary text-lg tracking-tight">Al-Hikmah</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <button onclick="showPage('pageNotif')" class="ms text-on-surface-variant text-[24px]">notifications</button>
+      <button onclick="showPage('pageProfile')" class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border border-outline-variant">
+        <span class="ms text-primary text-[20px]" id="avatarIcon">person</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ─── PAGE: HOME ─── -->
+  <div id="pageHome" class="page active pt-20 pb-28 px-4 flex flex-col gap-5">
+
+    <!-- Greeting -->
+    <section class="flex flex-col pt-1">
+      <span id="greetLabel" class="text-sm text-on-surface-variant font-medium">Selamat Pagi</span>
+      <h1 id="namaUser" class="text-[38px] font-bold text-on-surface leading-tight tracking-tight">–</h1>
+    </section>
+
+    <!-- Status Card -->
+    <section id="statusCard" class="bg-surface rounded-2xl p-5 ios-shadow flex flex-col gap-4">
+      <div class="flex justify-between items-center">
+        <div class="flex flex-col gap-1">
+          <span class="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">Status Absensi</span>
+          <div id="statusBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full w-fit text-xs font-semibold badge-ok">
+            <span class="ms ms-fill text-[14px]">check_circle</span>
+            <span id="statusText">Memuat...</span>
+          </div>
+        </div>
+        <span id="tanggalLabel" class="text-xs text-on-surface-variant font-medium"></span>
+      </div>
+      <div class="grid grid-cols-2 gap-3 pt-1">
+        <div class="bg-surface-container-low p-4 rounded-xl flex flex-col gap-1">
+          <span class="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">Masuk</span>
+          <div class="flex items-center gap-2">
+            <span id="jamMasukDisplay" class="text-lg font-bold text-on-surface">--:--</span>
+            <span class="ms text-on-surface-variant text-[18px]">login</span>
+          </div>
+        </div>
+        <div id="keluarBox" class="bg-surface-container-low p-4 rounded-xl flex flex-col gap-1 opacity-60">
+          <span class="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">Keluar</span>
+          <div class="flex items-center gap-2">
+            <span id="jamKeluarDisplay" class="text-lg font-bold text-on-surface-variant">--:--</span>
+            <span class="ms text-on-surface-variant text-[18px]">logout</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Jam Sekarang Live -->
+    <section class="bg-primary rounded-2xl px-5 py-4 ios-shadow flex items-center justify-between">
+      <div>
+        <p class="text-xs font-semibold text-white/70 uppercase tracking-wider">Waktu Sekarang</p>
+        <p id="liveClock" class="text-3xl font-bold text-white tracking-tight">00:00:00</p>
+        <p id="liveDate" class="text-xs text-white/60 mt-0.5"></p>
+      </div>
+      <span class="ms ms-fill text-white/30 text-6xl">schedule</span>
+    </section>
+
+    <!-- Scanner -->
+    <section class="flex flex-col gap-3">
+      <div class="flex justify-between items-center px-1">
+        <h3 class="font-semibold text-on-surface">Konfirmasi Kehadiran</h3>
+        <span id="lokasiInfo" class="text-xs text-on-surface-variant">Mendeteksi lokasi...</span>
+      </div>
+      <div id="scannerBox">
+        <div class="absolute inset-0 bg-slate-900 flex items-center justify-center">
+          <span class="ms text-white text-[80px] opacity-10">camera_outdoor</span>
+        </div>
+        <div class="scan-frame">
+          <div class="scan-line"></div>
+          <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
+          <div class="corner corner-bl"></div><div class="corner corner-br"></div>
+        </div>
+        <div class="absolute bottom-4 left-0 right-0 text-center">
+          <p class="text-white text-xs font-medium bg-black/50 glass inline-block px-4 py-1.5 rounded-full">
+            Posisikan wajah atau QR code dalam bingkai
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA Button -->
+    <section>
+      <button id="btnClock" onclick="handleClock()" disabled
+        class="press w-full h-14 bg-primary text-white rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 ios-shadow disabled:opacity-50">
+        <span class="ms text-[22px]" id="btnClockIcon">login</span>
+        <span id="btnClockLabel">Clock In</span>
+      </button>
+      <p class="text-center text-xs text-on-surface-variant mt-3 px-6">
+        Pastikan Anda berada di area gedung sebelum melakukan presensi.
+      </p>
+    </section>
+  </div>
+
+  <!-- ─── PAGE: HISTORY ─── -->
+  <div id="pageHistory" class="page pt-20 pb-28 px-4 flex flex-col gap-4">
+    <div class="flex items-center justify-between pt-1">
+      <h2 class="text-xl font-bold">Riwayat Presensi</h2>
+      <div class="flex gap-2">
+        <select id="selBulan" onchange="loadHistory()" class="bg-surface-container text-xs font-medium rounded-xl px-3 h-9 border-0 outline-none">
+          <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+          <option value="4">Apr</option><option value="5">Mei</option><option value="6">Jun</option>
+          <option value="7">Jul</option><option value="8">Agu</option><option value="9">Sep</option>
+          <option value="10">Okt</option><option value="11">Nov</option><option value="12">Des</option>
+        </select>
+        <select id="selTahun" onchange="loadHistory()" class="bg-surface-container text-xs font-medium rounded-xl px-3 h-9 border-0 outline-none"></select>
+      </div>
+    </div>
+    <div id="historyList" class="flex flex-col gap-3">
+      <!-- Diisi dinamis -->
+    </div>
+  </div>
+
+  <!-- ─── PAGE: STATS ─── -->
+  <div id="pageStats" class="page pt-20 pb-28 px-4 flex flex-col gap-4">
+    <h2 class="text-xl font-bold pt-1">Statistik Bulanan</h2>
+    <div id="statsGrid" class="grid grid-cols-2 gap-3">
+      <!-- Diisi dinamis -->
+    </div>
+    <div id="statsChart" class="bg-surface rounded-2xl p-5 ios-shadow">
+      <h3 class="font-semibold text-sm mb-4">Proporsi Kehadiran</h3>
+      <div class="flex items-center justify-center">
+        <svg id="donutSvg" viewBox="0 0 120 120" width="160" height="160"></svg>
+      </div>
+      <div id="legendArea" class="flex flex-wrap gap-3 mt-4 justify-center"></div>
+    </div>
+  </div>
+
+  <!-- ─── PAGE: PROFILE ─── -->
+  <div id="pageProfile" class="page pt-20 pb-28 px-4 flex flex-col gap-4">
+    <div class="bg-primary rounded-2xl p-6 ios-shadow flex flex-col items-center gap-3">
+      <div class="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center">
+        <span class="ms ms-fill text-white text-5xl">person</span>
+      </div>
+      <div class="text-center">
+        <h2 id="profileNama" class="text-xl font-bold text-white">–</h2>
+        <p id="profileJabatan" class="text-sm text-white/70">–</p>
+        <p id="profileLembaga" class="text-xs text-white/50 mt-0.5">–</p>
+      </div>
+    </div>
+    <div class="bg-surface rounded-2xl ios-shadow overflow-hidden">
+      <div class="flex items-center gap-4 px-5 py-4 border-b border-outline-variant/30">
+        <span class="ms text-primary text-[24px]">badge</span>
+        <div>
+          <p class="text-xs text-on-surface-variant">NIP</p>
+          <p id="profileNip" class="text-sm font-semibold">–</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 px-5 py-4 border-b border-outline-variant/30">
+        <span class="ms text-primary text-[24px]">business</span>
+        <div>
+          <p class="text-xs text-on-surface-variant">Lembaga</p>
+          <p id="profileLembaga2" class="text-sm font-semibold">–</p>
+        </div>
+      </div>
+      <button onclick="doLogout()" class="flex items-center gap-4 px-5 py-4 w-full text-error">
+        <span class="ms text-[24px]">logout</span>
+        <span class="text-sm font-semibold">Keluar / Logout</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ─── PAGE: NOTIF ─── -->
+  <div id="pageNotif" class="page pt-20 pb-28 px-4 flex flex-col gap-4">
+    <h2 class="text-xl font-bold pt-1">Notifikasi</h2>
+    <div class="bg-surface rounded-2xl p-5 ios-shadow flex flex-col items-center gap-3 text-on-surface-variant">
+      <span class="ms text-[48px] opacity-30">notifications_off</span>
+      <p class="text-sm">Belum ada notifikasi.</p>
+    </div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <nav class="fixed bottom-0 w-full z-50 bg-surface/85 glass flex justify-around items-center px-2 pb-6 pt-2 rounded-t-2xl shadow-[0_-4px_16px_rgba(0,0,0,.06)]">
+    <button onclick="showPage('pageHome')" id="nav-pageHome"
+      class="flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-2xl transition-colors text-on-surface-variant">
+      <span class="ms text-[24px]">home</span>
+      <span class="text-[11px] font-semibold">Home</span>
+    </button>
+    <button onclick="showPage('pageHistory')" id="nav-pageHistory"
+      class="flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-2xl transition-colors text-on-surface-variant">
+      <span class="ms text-[24px]">history</span>
+      <span class="text-[11px] font-semibold">Riwayat</span>
+    </button>
+    <button onclick="showPage('pageStats')" id="nav-pageStats"
+      class="flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-2xl transition-colors text-on-surface-variant">
+      <span class="ms text-[24px]">bar_chart</span>
+      <span class="text-[11px] font-semibold">Statistik</span>
+    </button>
+    <button onclick="showPage('pageProfile')" id="nav-pageProfile"
+      class="flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-2xl transition-colors text-on-surface-variant">
+      <span class="ms text-[24px]">person</span>
+      <span class="text-[11px] font-semibold">Profil</span>
+    </button>
+  </nav>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="bg-inverse-surface text-inverse-on-surface text-xs font-semibold px-5 py-3 rounded-full ios-shadow"></div>
+
+<!-- ═══════════════════════ SCRIPT ═══════════════════════════ -->
+<script>
+// ─── CONFIG — ganti URL dari Deploy GAS kamu ──────────────────
+const GAS_URL = 'https://script.google.com/macros/s/GANTI_DEPLOYMENT_ID/exec';
+
+// ─── STATE ────────────────────────────────────────────────────
+let currentUser = null;
+let userLat = null, userLng = null;
+let clockStatus = null; // null | 'can-in' | 'can-out' | 'done'
+
+// ─── INIT ─────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  startClock();
+  initSelectors();
+  const saved = sessionStorage.getItem('bh_user');
+  if (saved) {
+    currentUser = JSON.parse(saved);
+    bootApp();
+  }
+  getLocation();
+});
+
+// ─── LIVE CLOCK ───────────────────────────────────────────────
+function startClock() {
+  const days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  function tick() {
+    const n = new Date();
+    document.getElementById('liveClock').textContent =
+      String(n.getHours()).padStart(2,'0') + ':' +
+      String(n.getMinutes()).padStart(2,'0') + ':' +
+      String(n.getSeconds()).padStart(2,'0');
+    document.getElementById('liveDate').textContent =
+      days[n.getDay()] + ', ' + n.getDate() + ' ' + months[n.getMonth()] + ' ' + n.getFullYear();
+    document.getElementById('tanggalLabel').textContent =
+      days[n.getDay()] + ', ' + n.getDate() + ' ' + months[n.getMonth()];
+  }
+  tick(); setInterval(tick, 1000);
+}
+
+// ─── GEOLOCATION ──────────────────────────────────────────────
+function getLocation() {
+  if (!navigator.geolocation) {
+    document.getElementById('lokasiInfo').textContent = 'GPS tidak tersedia';
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(pos => {
+    userLat = pos.coords.latitude.toFixed(6);
+    userLng = pos.coords.longitude.toFixed(6);
+    document.getElementById('lokasiInfo').textContent = '📍 Lokasi terdeteksi';
+  }, () => {
+    document.getElementById('lokasiInfo').textContent = '⚠️ Lokasi tidak aktif';
+  });
+}
+
+// ─── LOGIN ────────────────────────────────────────────────────
+async function doLogin() {
+  const nip  = document.getElementById('inputNip').value.trim();
+  const pass = document.getElementById('inputPass').value.trim();
+  const err  = document.getElementById('loginErr');
+  const btn  = document.getElementById('btnLogin');
+  if (!nip || !pass) { showErr(err,'Isi NIP dan password terlebih dahulu.'); return; }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="ms text-[20px] animate-spin">autorenew</span> Memuat...';
+  const res = await gasCall({ action:'login', nip, password:pass });
+  btn.disabled = false;
+  btn.innerHTML = '<span class="ms text-[20px]">login</span> Masuk';
+  if (!res || !res.ok) { showErr(err, res?.msg || 'Gagal terhubung ke server.'); return; }
+  err.classList.add('hidden');
+  currentUser = res.karyawan;
+  sessionStorage.setItem('bh_user', JSON.stringify(currentUser));
+  bootApp();
+}
+
+function bootApp() {
+  document.getElementById('pageLogin').classList.add('hidden');
+  document.getElementById('pageLogin').classList.remove('active');
+  document.getElementById('appShell').classList.remove('hidden');
+  // Isi profil
+  document.getElementById('namaUser').textContent    = firstName(currentUser.nama);
+  document.getElementById('profileNama').textContent  = currentUser.nama;
+  document.getElementById('profileJabatan').textContent = currentUser.jabatan;
+  document.getElementById('profileLembaga').textContent = currentUser.lembaga;
+  document.getElementById('profileLembaga2').textContent = currentUser.lembaga;
+  document.getElementById('profileNip').textContent   = currentUser.nip;
+  // Greeting
+  const h = new Date().getHours();
+  document.getElementById('greetLabel').textContent =
+    h < 11 ? 'Selamat Pagi,' : h < 15 ? 'Selamat Siang,' : h < 18 ? 'Selamat Sore,' : 'Selamat Malam,';
+  // Load status
+  loadStatusHariIni();
+  showPage('pageHome');
+}
+
+function doLogout() {
+  sessionStorage.removeItem('bh_user');
+  currentUser = null;
+  document.getElementById('appShell').classList.add('hidden');
+  document.getElementById('pageLogin').classList.remove('hidden');
+  document.getElementById('pageLogin').classList.add('active');
+  document.getElementById('inputNip').value = '';
+  document.getElementById('inputPass').value = '';
+}
+
+// ─── STATUS HARI INI ─────────────────────────────────────────
+async function loadStatusHariIni() {
+  const res = await gasCall({ action:'getStatus', nip: currentUser.nip });
+  if (!res || !res.ok) return;
+
+  const btn      = document.getElementById('btnClock');
+  const btnIcon  = document.getElementById('btnClockIcon');
+  const btnLabel = document.getElementById('btnClockLabel');
+  const badge    = document.getElementById('statusBadge');
+  const st       = document.getElementById('statusText');
+
+  if (res.jam_masuk) {
+    document.getElementById('jamMasukDisplay').textContent = res.jam_masuk;
+    document.getElementById('jamMasukDisplay').classList.remove('text-on-surface');
+    document.getElementById('jamMasukDisplay').classList.add(
+      res.status === 'Terlambat' ? 'text-warning' : 'text-secondary');
+  }
+  if (res.jam_keluar) {
+    document.getElementById('jamKeluarDisplay').textContent = res.jam_keluar;
+    document.getElementById('keluarBox').classList.remove('opacity-60');
+  }
+
+  // Update badge
+  if (!res.jam_masuk) {
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full w-fit text-xs font-semibold badge-izin';
+    badge.querySelector('.ms').textContent = 'radio_button_unchecked';
+    st.textContent = 'Belum Absen';
+    btn.disabled = false;
+    btnIcon.textContent = 'login'; btnLabel.textContent = 'Clock In';
+    clockStatus = 'can-in';
+  } else if (!res.jam_keluar) {
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full w-fit text-xs font-semibold ' +
+      (res.status === 'Terlambat' ? 'badge-late' : 'badge-ok');
+    badge.querySelector('.ms').textContent = res.status === 'Terlambat' ? 'error' : 'check_circle';
+    st.textContent = res.status || 'Hadir';
+    btn.disabled = false;
+    btn.className = btn.className.replace('bg-primary','bg-warning');
+    btnIcon.textContent = 'logout'; btnLabel.textContent = 'Clock Out';
+    clockStatus = 'can-out';
+  } else {
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full w-fit text-xs font-semibold badge-ok';
+    badge.querySelector('.ms').textContent = 'task_alt';
+    st.textContent = 'Selesai';
+    btn.disabled = true;
+    btnIcon.textContent = 'done_all'; btnLabel.textContent = 'Presensi Selesai';
+    clockStatus = 'done';
+  }
+}
+
+// ─── CLOCK IN / OUT ──────────────────────────────────────────
+async function handleClock() {
+  const btn = document.getElementById('btnClock');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="ms animate-spin text-[22px]">autorenew</span> Memproses...';
+  const action = clockStatus === 'can-in' ? 'clockIn' : 'clockOut';
+  const res = await gasCall({ action, nip: currentUser.nip, lat: userLat, lng: userLng });
+  if (res && res.ok) {
+    showToast(res.msg, true);
+    setTimeout(() => loadStatusHariIni(), 800);
+  } else {
+    showToast(res?.msg || 'Gagal. Coba lagi.', false);
+    btn.disabled = false;
+  }
+}
+
+// ─── HISTORY ─────────────────────────────────────────────────
+async function loadHistory() {
+  if (!currentUser) return;
+  const bln = document.getElementById('selBulan').value;
+  const thn = document.getElementById('selTahun').value;
+  const list = document.getElementById('historyList');
+  list.innerHTML = '<div class="skel h-16 w-full"></div><div class="skel h-16 w-full mt-3"></div><div class="skel h-16 w-full mt-3"></div>';
+  const res = await gasCall({ action:'getHistory', nip: currentUser.nip, bulan: bln, tahun: thn });
+  if (!res || !res.ok || !res.data.length) {
+    list.innerHTML = '<div class="bg-surface rounded-2xl p-6 ios-shadow text-center text-sm text-on-surface-variant">Tidak ada data presensi bulan ini.</div>';
+    return;
+  }
+  const days = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+  list.innerHTML = res.data.map(d => {
+    const [y,m,day] = d.tanggal.split('-');
+    const dayName = days[new Date(d.tanggal).getDay()];
+    const st = d.status || 'Alfa';
+    const badgeClass = st === 'Tepat Waktu' ? 'badge-ok' : st === 'Terlambat' ? 'badge-late' : st === 'Izin' ? 'badge-izin' : 'badge-alfa';
+    const icon = st === 'Tepat Waktu' ? 'check_circle' : st === 'Terlambat' ? 'error' : st === 'Izin' ? 'info' : 'cancel';
+    return `<div class="bg-surface rounded-2xl p-4 ios-shadow flex items-center gap-4">
+      <div class="flex flex-col items-center min-w-[40px]">
+        <span class="text-xs text-on-surface-variant font-medium">${dayName}</span>
+        <span class="text-xl font-bold text-on-surface">${day}</span>
+      </div>
+      <div class="w-px h-10 bg-outline-variant/40"></div>
+      <div class="flex-1 flex flex-col gap-0.5">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-semibold">Masuk: ${d.jam_masuk || '--:--'}</span>
+          ${d.jam_keluar ? `<span class="text-xs text-on-surface-variant">· Keluar: ${d.jam_keluar}</span>` : ''}
+        </div>
+        <span class="inline-flex items-center gap-1 text-xs font-semibold ${badgeClass} px-2 py-0.5 rounded-full w-fit">
+          <span class="ms ms-fill text-[12px]">${icon}</span>${st}
+        </span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── STATS ────────────────────────────────────────────────────
+async function loadStats() {
+  if (!currentUser) return;
+  const bln = document.getElementById('selBulan').value;
+  const thn = document.getElementById('selTahun').value;
+  const grid = document.getElementById('statsGrid');
+  grid.innerHTML = '<div class="skel h-24 col-span-2 w-full"></div>';
+  const res = await gasCall({ action:'getStats', nip: currentUser.nip, bulan: bln, tahun: thn });
+  if (!res || !res.ok) return;
+  const s = res.stats;
+  const cards = [
+    { label:'Tepat Waktu', val: s.hadir,     icon:'check_circle', cls:'text-secondary', bg:'bg-[#f0fdf4]' },
+    { label:'Terlambat',   val: s.terlambat, icon:'error',         cls:'text-warning',   bg:'bg-[#fff7ed]' },
+    { label:'Izin/Sakit',  val: s.izin,      icon:'info',          cls:'text-primary',   bg:'bg-[#eff6ff]' },
+    { label:'Alfa',        val: s.alfa,       icon:'cancel',        cls:'text-error',     bg:'bg-[#fef2f2]' },
+  ];
+  grid.innerHTML = cards.map(c => `
+    <div class="${c.bg} rounded-2xl p-4 ios-shadow flex flex-col gap-2">
+      <span class="ms ms-fill ${c.cls} text-[28px]">${c.icon}</span>
+      <span class="text-3xl font-bold text-on-surface">${c.val}</span>
+      <span class="text-xs font-semibold text-on-surface-variant">${c.label}</span>
+    </div>`).join('');
+
+  // Donut chart
+  const total = s.hadir + s.terlambat + s.izin + s.alfa || 1;
+  const slices = [
+    { val: s.hadir,     color:'#16a34a', label:'Tepat Waktu' },
+    { val: s.terlambat, color:'#FF9500', label:'Terlambat' },
+    { val: s.izin,      color:'#2563eb', label:'Izin' },
+    { val: s.alfa,      color:'#dc2626', label:'Alfa' },
+  ];
+  drawDonut(slices, total);
+}
+
+function drawDonut(slices, total) {
+  const svg = document.getElementById('donutSvg');
+  const legend = document.getElementById('legendArea');
+  const cx=60,cy=60,r=44,stroke=16;
+  let offset=0, paths='';
+  slices.forEach(s => {
+    if(!s.val) return;
+    const pct = s.val/total;
+    const dash = pct*2*Math.PI*r;
+    const gap  = 2*Math.PI*r - dash;
+    paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}"
+      stroke-width="${stroke}" stroke-dasharray="${dash} ${gap}"
+      stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})" opacity=".9"/>`;
+    offset += dash;
+  });
+  svg.innerHTML = paths +
+    `<text x="${cx}" y="${cy-6}" text-anchor="middle" font-size="16" font-weight="700" fill="#1a1b1f">${total}</text>
+     <text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="9" fill="#717786">Hari Kerja</text>`;
+  legend.innerHTML = slices.filter(s=>s.val>0).map(s =>
+    `<div class="flex items-center gap-1.5 text-xs">
+      <span class="w-2.5 h-2.5 rounded-full" style="background:${s.color}"></span>
+      <span class="text-on-surface-variant">${s.label} (${s.val})</span>
+    </div>`).join('');
+}
+
+// ─── PAGE NAVIGATION ──────────────────────────────────────────
+const navPages = ['pageHome','pageHistory','pageStats','pageProfile'];
+function showPage(id) {
+  document.querySelectorAll('#appShell .page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id)?.classList.add('active');
+  // Nav highlight
+  navPages.forEach(p => {
+    const btn = document.getElementById('nav-'+p);
+    if (!btn) return;
+    if (p === id) {
+      btn.classList.add('bg-primary/10','text-primary');
+      btn.classList.remove('text-on-surface-variant');
+      btn.querySelector('.ms').classList.add('ms-fill');
+    } else {
+      btn.classList.remove('bg-primary/10','text-primary');
+      btn.classList.add('text-on-surface-variant');
+      btn.querySelector('.ms').classList.remove('ms-fill');
+    }
+  });
+  // Lazy load
+  if (id === 'pageHistory') loadHistory();
+  if (id === 'pageStats') loadStats();
+}
+
+// ─── UTILITIES ────────────────────────────────────────────────
+function initSelectors() {
+  const now = new Date();
+  const selB = document.getElementById('selBulan');
+  const selT = document.getElementById('selTahun');
+  selB.value = now.getMonth() + 1;
+  for (let y = now.getFullYear(); y >= 2023; y--) {
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y;
+    selT.appendChild(o);
+  }
+}
+
+async function gasCall(params) {
+  try {
+    const url = GAS_URL + '?' + new URLSearchParams(params).toString();
+    const res = await fetch(url, { method:'GET', mode:'cors' });
+    return await res.json();
+  } catch(e) {
+    console.error('GAS Error:', e);
+    return null;
+  }
+}
+
+function showToast(msg, success=true) {
+  const t = document.getElementById('toast');
+  t.textContent = (success ? '✓ ' : '✕ ') + msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function showErr(el, msg) {
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function firstName(nama) { return (nama||'').split(' ')[0]; }
+
+function togglePass() {
+  const inp = document.getElementById('inputPass');
+  const ico = document.getElementById('eyeIcon');
+  if (inp.type === 'password') { inp.type='text'; ico.textContent='visibility'; }
+  else { inp.type='password'; ico.textContent='visibility_off'; }
+}
+</script>
+</body>
+</html>

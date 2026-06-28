@@ -1,0 +1,290 @@
+<!--
+=============================================================
+  PATCH: Ganti bagian <script> getLocation() dan handleClock()
+  di presensi-app.html dengan versi ini.
+  
+  Tambahkan juga elemen #lokasiStatus ke dalam DOM
+  (sudah ada contohnya di bawah ini).
+=============================================================
+-->
+
+<!-- Tambahkan di dalam section scanner, ganti <span id="lokasiInfo"> dengan ini: -->
+<div id="lokasiStatus" class="flex items-center gap-2 px-1">
+  <span id="lokasiDot" class="w-2 h-2 rounded-full bg-outline animate-pulse"></span>
+  <span id="lokasiInfo" class="text-xs text-on-surface-variant">Mendeteksi lokasi...</span>
+</div>
+
+<!-- Tambahkan juga modal peringatan fake GPS (sebelum </body>) -->
+<div id="fakeGpsModal" class="hidden fixed inset-0 z-[999] bg-black/60 flex items-end justify-center p-4">
+  <div class="bg-surface w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4 ios-shadow">
+    <div class="flex items-start gap-4">
+      <div class="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+        <span class="ms ms-fill text-error text-[28px]">gps_off</span>
+      </div>
+      <div>
+        <h3 class="font-bold text-on-surface text-base">Lokasi Tidak Valid</h3>
+        <p id="fakeGpsMsg" class="text-sm text-on-surface-variant mt-1 leading-relaxed">
+          Terdeteksi penggunaan lokasi palsu (fake GPS).
+        </p>
+      </div>
+    </div>
+    <div class="bg-red-50 rounded-xl p-3">
+      <p id="fakeGpsReasons" class="text-xs text-error font-medium leading-relaxed"></p>
+    </div>
+    <button onclick="closeFakeGpsModal()"
+      class="w-full h-12 bg-error text-white rounded-xl font-semibold text-sm press">
+      Mengerti
+    </button>
+  </div>
+</div>
+
+<script>
+// =============================================================
+//  LOKASI & FAKE GPS DETECTION
+//  Ganti/tambahkan ini ke dalam <script> utama
+// =============================================================
+
+// ─── KONFIGURASI LOKASI GEDUNG ────────────────────────────────
+// Ganti dengan koordinat gedung / sekolah kamu
+const GEDUNG_LOCATIONS = [
+  { nama: 'MTs Al-Hikmah',   lat: -6.9700, lng: 109.6800, radius: 100 }, // meter
+  { nama: 'MIS Al-Hikmah',   lat: -6.9710, lng: 109.6810, radius: 100 },
+  { nama: 'PKBM Al-Hikmah',  lat: -6.9720, lng: 109.6820, radius: 100 },
+  { nama: 'KB Al-Hikmah',    lat: -6.9730, lng: 109.6830, radius: 100 },
+];
+const RADIUS_OVERRIDE = false; // set true untuk debug/bypass radius check
+
+// ─── STATE LOKASI ─────────────────────────────────────────────
+let lokasiValid  = false;
+let lokasiResult = null; // { lat, lng, accuracy, gedung, isMock }
+
+// ─── INISIALISASI DETEKSI LOKASI ─────────────────────────────
+function getLocation() {
+  const dot  = document.getElementById('lokasiDot');
+  const info = document.getElementById('lokasiInfo');
+
+  if (!navigator.geolocation) {
+    setLokasiState('error', '⚠ GPS tidak tersedia di perangkat ini');
+    return;
+  }
+
+  setLokasiState('loading', 'Mendeteksi lokasi...');
+
+  const startTime = Date.now();
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const elapsed = Date.now() - startTime;
+      const lat      = pos.coords.latitude;
+      const lng      = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy; // meter
+
+      // Kumpulkan semua temuan mencurigakan
+      const suspicious = [];
+
+      // ── 1. Cek dari Android Native Bridge ──────────────────
+      let nativeMock = false;
+      if (window.AndroidBridge) {
+        try {
+          const mockRes = JSON.parse(AndroidBridge.checkMockLocation());
+          if (mockRes.isMock) {
+            nativeMock = true;
+            mockRes.reasons.forEach(r => suspicious.push(r));
+          }
+          // Bonus: cek developer mode
+          if (AndroidBridge.isDeveloperModeEnabled()) {
+            suspicious.push('Developer Options aktif — potensi mock location');
+          }
+        } catch(e) {
+          console.warn('AndroidBridge error:', e);
+        }
+      }
+
+      // ── 2. Cek kecepatan respons GPS ───────────────────────
+      // GPS asli butuh waktu untuk lock. Jika < 200ms, sangat mencurigakan
+      if (elapsed < 200 && !nativeMock) {
+        suspicious.push('Lokasi diterima terlalu cepat (' + elapsed + 'ms) — kemungkinan mock');
+      }
+
+      // ── 3. Cek akurasi terlalu sempurna ───────────────────
+      // GPS asli jarang < 3 meter, mock GPS sering set 0–1 meter
+      if (accuracy < 3) {
+        suspicious.push('Akurasi GPS terlalu sempurna (' + accuracy.toFixed(1) + 'm) — kemungkinan mock');
+      }
+
+      // ── 4. Cek koordinat di radius gedung ─────────────────
+      const gedungMatch = cekRadiusGedung(lat, lng);
+
+      // ── 5. Evaluasi hasil ─────────────────────────────────
+      const isMockDetected = nativeMock || suspicious.length >= 2;
+
+      if (isMockDetected) {
+        lokasiValid = false;
+        setLokasiState('error', '🚫 Fake GPS terdeteksi!');
+        showFakeGpsModal(suspicious);
+        lokasiResult = { lat, lng, accuracy, gedung: null, isMock: true, suspicious };
+        disableClockButton('Presensi diblokir — Fake GPS');
+        return;
+      }
+
+      if (!gedungMatch && !RADIUS_OVERRIDE) {
+        lokasiValid = false;
+        setLokasiState('warn', '📍 Di luar area gedung (' + Math.round(gedungMatch?.jarak ?? 0) + 'm)');
+        disableClockButton('Di luar area gedung');
+        lokasiResult = { lat, lng, accuracy, gedung: null, isMock: false, suspicious };
+        return;
+      }
+
+      // ✅ Lokasi valid
+      lokasiValid = true;
+      lokasiResult = {
+        lat:       lat.toFixed(6),
+        lng:       lng.toFixed(6),
+        accuracy:  Math.round(accuracy),
+        gedung:    gedungMatch?.nama || 'Area Yayasan',
+        isMock:    false,
+        suspicious
+      };
+
+      setLokasiState('ok',
+        '✓ ' + (gedungMatch?.nama || 'Area Yayasan') +
+        ' (±' + Math.round(accuracy) + 'm)'
+      );
+      enableClockButton();
+
+      // Simpan ke global (digunakan saat clock-in/out)
+      userLat = lokasiResult.lat;
+      userLng = lokasiResult.lng;
+    },
+    (err) => {
+      lokasiValid = false;
+      const msg = {
+        1: 'Izin lokasi ditolak — aktifkan di pengaturan',
+        2: 'Sinyal GPS lemah — coba di area terbuka',
+        3: 'Timeout GPS — coba lagi',
+      }[err.code] || 'GPS error';
+      setLokasiState('error', '⚠ ' + msg);
+      disableClockButton('GPS tidak aktif');
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0  // HARUS 0 — tidak boleh pakai cache (mudah dipalsukan)
+    }
+  );
+}
+
+// ─── CEK RADIUS GEDUNG ────────────────────────────────────────
+function cekRadiusGedung(lat, lng) {
+  let closest = null;
+  let minJarak = Infinity;
+
+  GEDUNG_LOCATIONS.forEach(g => {
+    const jarak = hitungJarak(lat, lng, g.lat, g.lng);
+    if (jarak < minJarak) { minJarak = jarak; closest = { ...g, jarak }; }
+    if (jarak <= g.radius) closest = { ...g, jarak, match: true };
+  });
+
+  return closest?.match ? closest : null;
+}
+
+// Haversine formula — jarak dalam meter
+function hitungJarak(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ─── UI STATE HELPERS ─────────────────────────────────────────
+function setLokasiState(state, msg) {
+  const dot  = document.getElementById('lokasiDot');
+  const info = document.getElementById('lokasiInfo');
+  info.textContent = msg;
+  dot.className = 'w-2 h-2 rounded-full flex-shrink-0 ' + {
+    loading: 'bg-outline animate-pulse',
+    ok:      'bg-secondary',
+    warn:    'bg-warning',
+    error:   'bg-error',
+  }[state];
+}
+
+function disableClockButton(reason) {
+  const btn = document.getElementById('btnClock');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.title = reason;
+}
+
+function enableClockButton() {
+  const btn = document.getElementById('btnClock');
+  if (!btn || clockStatus === 'done') return;
+  btn.disabled = false;
+}
+
+// ─── FAKE GPS MODAL ───────────────────────────────────────────
+function showFakeGpsModal(reasons) {
+  document.getElementById('fakeGpsModal').classList.remove('hidden');
+  document.getElementById('fakeGpsReasons').innerHTML =
+    reasons.map(r => '• ' + r).join('<br>');
+}
+function closeFakeGpsModal() {
+  document.getElementById('fakeGpsModal').classList.add('hidden');
+}
+
+// ─── HANDLE CLOCK (override versi lama, tambah validasi) ──────
+async function handleClock() {
+  // Re-check lokasi sebelum submit
+  if (!lokasiValid && !RADIUS_OVERRIDE) {
+    showToast('Lokasi tidak valid, tidak bisa presensi.', false);
+    // Coba detect ulang
+    getLocation();
+    return;
+  }
+  if (lokasiResult?.isMock) {
+    showFakeGpsModal(lokasiResult.suspicious || ['Fake GPS terdeteksi']);
+    return;
+  }
+
+  const btn = document.getElementById('btnClock');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="ms animate-spin text-[22px]">autorenew</span> Memproses...';
+
+  const action = clockStatus === 'can-in' ? 'clockIn' : 'clockOut';
+  const params = {
+    action,
+    nip:          currentUser.nip,
+    lat:          lokasiResult?.lat || '',
+    lng:          lokasiResult?.lng || '',
+    accuracy:     lokasiResult?.accuracy || '',
+    gedung:       lokasiResult?.gedung || '',
+    is_mock:      lokasiResult?.isMock ? '1' : '0',
+  };
+
+  // Tambah device info jika tersedia
+  if (window.AndroidBridge) {
+    try {
+      const dev = JSON.parse(AndroidBridge.getDeviceInfo());
+      params.device = dev.brand + ' ' + dev.model;
+    } catch(e) {}
+  }
+
+  const res = await gasCall(params);
+  if (res && res.ok) {
+    showToast(res.msg, true);
+    if (window.AndroidBridge) AndroidBridge.showToast(res.msg);
+    setTimeout(() => loadStatusHariIni(), 800);
+  } else {
+    showToast(res?.msg || 'Gagal. Coba lagi.', false);
+    btn.disabled = false;
+  }
+}
+
+// ─── PATCH: Tambahkan kolom baru di GAS untuk is_mock ─────────
+// Di Code.gs, update fungsi clockIn() agar menyimpan is_mock:
+// const row = [nip, today, jamNow, '', status, '', lat, lng, is_mock, device, new Date()];
+// Dan tambahkan header di setupSpreadsheet():
+// ['NIP','Tanggal','Jam Masuk','Jam Keluar','Status','Keterangan','Lat','Lng','Is Mock','Device','Timestamp']
+</script>
