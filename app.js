@@ -5,13 +5,10 @@
 // === CONFIG ===
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxFtCfNLDiu38u01JveCI2KK5c_RP2odcyXcU6QjwPmem7l8C9wGY3QZ3t3u4c2-0a7/exec';
 const GEDUNG_LOCATIONS = [
-  { nama: 'MTs Al-Hikmah', lat: -6.9700, lng: 109.6800, radius: 100 },
-  { nama: 'MIS Al-Hikmah', lat: -6.9710, lng: 109.6810, radius: 100 },
-  { nama: 'PKBM Al-Hikmah', lat: -6.9720, lng: 109.6820, radius: 100 },
-  { nama: 'KB Al-Hikmah', lat: -6.9730, lng: 109.6830, radius: 100 },
+  { nama: 'Yayasan Al-Hikmah', lat: -6.932647, lng: 109.655811, radius: 100 },
 ];
 const ADMIN_NIP = 'admin';
-const RADIUS_OVERRIDE = true; // SET false UNTUK PRODUCTION
+const RADIUS_OVERRIDE = false;
 
 // === STATE ===
 let currentUser = null;
